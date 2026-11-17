@@ -558,14 +558,14 @@ function computeStats() {
   const todo   =tasks.filter(t=>{const sl=(t.Statut||'').toLowerCase();return sl.includes('faire')&&!isLate(t);}).length;
 
   // priorité (champ Priorite)
-  const prio={critique:0,haute:0,moyenne:0,basse:0,nondefinie:0};
+  const prio={critique:0,haute:0,moyenne:0,basse:0};
   tasks.forEach(t=>{
     const p=String(t.Priorite||t.priorite||'').toLowerCase();
     if(p.includes('critique')) prio.critique++;
     else if(p.includes('haute')) prio.haute++;
     else if(p.includes('basse')) prio.basse++;
     else if(p.includes('moyenne')) prio.moyenne++;
-    else prio.nondefinie++;
+    else prio.moyenne++; // Priorité absente : valeur par défaut Moyenne (affichage uniquement)
   });
   return {total,inProg,done,inRevue,late,todo,prio};
 }
@@ -696,13 +696,12 @@ function renderDonut(s,tasks) {
 }
 /* ── Priorité bars ── */
 function renderPrioBars(s) {
-  const max=Math.max(s.prio.critique,s.prio.haute,s.prio.moyenne,s.prio.basse,s.prio.nondefinie,1);
+  const max=Math.max(s.prio.critique,s.prio.haute,s.prio.moyenne,s.prio.basse,1);
   const bars=[
     {lbl:'Critique',val:s.prio.critique,color:'#dc2626'},
     {lbl:'Haute',   val:s.prio.haute,   color:'#f59e0b'},
     {lbl:'Moyenne', val:s.prio.moyenne, color:'#2563eb'},
     {lbl:'Basse',   val:s.prio.basse,   color:'#9ca3af'},
-    {lbl:'Non définie',val:s.prio.nondefinie,color:'#64748b'},
   ];
   return `<div class="pcard">
     <div class="pcard-head"><span class="pcard-title">🎯 Par priorité</span></div>
