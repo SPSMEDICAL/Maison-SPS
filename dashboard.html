@@ -193,7 +193,7 @@ button{font-family:var(--font);}
 /* ── PRIORITY BARS ── */
 .prio-wrap{padding:12px 16px;display:flex;flex-direction:column;gap:8px;}
 .prio-row{display:flex;align-items:center;gap:10px;}
-.prio-lbl{font-size:11.5px;color:var(--text2);width:60px;flex-shrink:0;}
+.prio-lbl{font-size:11.5px;color:var(--text2);width:82px;flex-shrink:0;}
 .prio-bar-bg{flex:1;height:20px;background:var(--grey-lt);border-radius:4px;overflow:hidden;}
 .prio-bar-fill{height:100%;border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:7px;font-size:11px;font-weight:700;color:#fff;transition:width .4s ease;}
 .prio-num{font-size:12px;font-weight:700;font-family:var(--mono);width:20px;text-align:right;flex-shrink:0;}
@@ -558,13 +558,14 @@ function computeStats() {
   const todo   =tasks.filter(t=>{const sl=(t.Statut||'').toLowerCase();return sl.includes('faire')&&!isLate(t);}).length;
 
   // priorité (champ Priorite)
-  const prio={critique:0,haute:0,moyenne:0,basse:0};
+  const prio={critique:0,haute:0,moyenne:0,basse:0,nondefinie:0};
   tasks.forEach(t=>{
     const p=String(t.Priorite||t.priorite||'').toLowerCase();
     if(p.includes('critique')) prio.critique++;
     else if(p.includes('haute')) prio.haute++;
     else if(p.includes('basse')) prio.basse++;
-    else prio.moyenne++;
+    else if(p.includes('moyenne')) prio.moyenne++;
+    else prio.nondefinie++;
   });
   return {total,inProg,done,inRevue,late,todo,prio};
 }
@@ -695,12 +696,13 @@ function renderDonut(s,tasks) {
 }
 /* ── Priorité bars ── */
 function renderPrioBars(s) {
-  const max=Math.max(s.prio.critique,s.prio.haute,s.prio.moyenne,s.prio.basse,1);
+  const max=Math.max(s.prio.critique,s.prio.haute,s.prio.moyenne,s.prio.basse,s.prio.nondefinie,1);
   const bars=[
     {lbl:'Critique',val:s.prio.critique,color:'#dc2626'},
     {lbl:'Haute',   val:s.prio.haute,   color:'#f59e0b'},
     {lbl:'Moyenne', val:s.prio.moyenne, color:'#2563eb'},
     {lbl:'Basse',   val:s.prio.basse,   color:'#9ca3af'},
+    {lbl:'Non définie',val:s.prio.nondefinie,color:'#64748b'},
   ];
   return `<div class="pcard">
     <div class="pcard-head"><span class="pcard-title">🎯 Par priorité</span></div>
