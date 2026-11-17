@@ -646,7 +646,11 @@ function renderDonut(s,tasks) {
     'en-revue': s.inRevue,
     'termine':  s.done,
   };
-  const total=s.total||1;
+  const total=s.total||0;
+  const totalForArcs=total||1;
+  const formatPct=n=>total>0?(100*n/total).toLocaleString('fr-FR',{maximumFractionDigits:1})+' %':'0 %';
+  const progress=total>0?(((s.done||0)*1)+((s.inProg||0)*0.5)+((s.inRevue||0)*0.75))/total*100:0;
+  const progressLabel=progress.toLocaleString('fr-FR',{minimumFractionDigits:0,maximumFractionDigits:1})+' %';
   const R=52,cx=60,cy=60,stroke=14;
   const circ=2*Math.PI*R;
   let offset=0;
@@ -654,20 +658,18 @@ function renderDonut(s,tasks) {
   DONUT_STATUTS.forEach(st=>{
     const n=counts[st.key]||0;
     if(!n) return;
-    const dash=(n/total)*circ;
+    const dash=(n/totalForArcs)*circ;
     arcs+=`<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${st.color}" stroke-width="${stroke}"
       stroke-dasharray="${dash} ${circ-dash}" stroke-dashoffset="${-offset}" transform="rotate(-90 ${cx} ${cy})"
       style="cursor:pointer" onclick="onPilotChange('')"/>`;
     offset+=dash;
   });
-
   const legend=DONUT_STATUTS.map(st=>`
     <div class="dl-item">
       <div class="dl-dot" style="background:${st.color}"></div>
       <div class="dl-name">${st.label}</div>
-      <div class="dl-count">${counts[st.key]||0}</div>
+      <div class="dl-count">${formatPct(counts[st.key]||0)}</div>
     </div>`).join('');
-
   return `<div class="pcard">
     <div class="pcard-head">
       <span class="pcard-title">📊 Par statut</span>
@@ -680,11 +682,17 @@ function renderDonut(s,tasks) {
           <div class="donut-total-lbl">tâches</div>
         </div>
       </div>
-      <div class="donut-legend">${legend}</div>
+      <div style="display:flex;flex-direction:column;gap:12px;flex:1;min-width:0;">
+        <div style="border:1px solid var(--border);background:var(--bg);border-radius:10px;padding:10px 12px;">
+          <div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Avancement global</div>
+          <div style="font-size:24px;font-weight:800;font-family:var(--mono);color:var(--blue);line-height:1.15;margin-top:3px;">${progressLabel}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:4px;">Terminé 100 % • En cours 50 % • En revue 75 %</div>
+        </div>
+        <div class="donut-legend">${legend}</div>
+      </div>
     </div>
   </div>`;
 }
-
 /* ── Priorité bars ── */
 function renderPrioBars(s) {
   const max=Math.max(s.prio.critique,s.prio.haute,s.prio.moyenne,s.prio.basse,1);
