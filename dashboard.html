@@ -357,7 +357,10 @@ button{font-family:var(--font);}
       <option value="">Toute l'équipe</option>
     </select>
 
-    <span class="nav-date" id="navDate"></span>
+    <select class="pilot-select" id="programSelect" aria-label="Filtrer par programme" onchange="onProgramChange(this.value)" style="max-width:220px" title="Filtrer les tâches par programme">
+       <option value="">Tous les programmes</option>
+     </select>
+     <span class="nav-date" id="navDate"></span>
   </div>
 </div>
 
@@ -388,6 +391,7 @@ let programSheetRows= [];
 let programSheetById= {};
 let gristReady      = false;
 let currentPilot    = '';
+let currentProgram  = '';
 let currentUserEmail= '';
 let searchQuery     = '';
 
@@ -537,7 +541,7 @@ function showToastMsg(msg) {
 /* ══════════════════════════════════════════
    FILTERING
 ══════════════════════════════════════════ */
-function getMyTasks()    { return allActions.filter(a=>isTask(a)   &&(!currentPilot||pilotNameOf(a)===currentPilot)); }
+function getMyTasks() { return allActions.filter(a=>isTask(a)&&(!currentPilot||pilotNameOf(a)===currentPilot)&&(!currentProgram||progNameOf(a)===currentProgram)); }
 function getMyProjects() { return allActions.filter(a=>isProject(a)&&(!currentPilot||pilotNameOf(a)===currentPilot||(tasksByProg(a.id)||[]).some(t=>pilotNameOf(t)===currentPilot))); }
 function tasksByProg(progId) { return allActions.filter(t=>isTask(t)&&refIdOf(t.Action_Parent)===progId); }
 
@@ -710,7 +714,7 @@ function renderPrioBars(s) {
 function renderTeamLoad() {
   // Regrouper par pilote
   const map={};
-  allActions.filter(a=>isTask(a)).forEach(t=>{
+  allActions.filter(a=>isTask(a)&&(!currentProgram||progNameOf(a)===currentProgram)).forEach(t=>{
     const name=pilotNameOf(t);
     if(!name) return;
     if(!map[name]) map[name]={name,total:0,active:0};
@@ -906,6 +910,16 @@ document.addEventListener('click',e=>{if(!e.target.closest('.search-wrap'))hideS
    PILOT FILTER
 ══════════════════════════════════════════ */
 function onPilotChange(val){currentPilot=val;render();}
+function onProgramChange(val){currentProgram=val;render();}
+function populateProgramSelect(){
+  const sel=document.getElementById('programSelect');
+  if(!sel)return;
+  const names=[...new Set(Object.values(programSheetById).concat(allActions.filter(isTask).map(progNameOf)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'));
+  sel.replaceChildren(new Option('Tous les programmes',''));
+  names.forEach(name=>sel.add(new Option(name,name)));
+  if(currentProgram&&!names.includes(currentProgram))currentProgram='';
+  sel.value=currentProgram;
+}
 
 function populatePilotSelect() {
   const pilots=[...new Set(allActions.map(a=>pilotNameOf(a)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'));
@@ -985,6 +999,7 @@ async function loadAll() {
   allActions=ar.rows; membersRows=mr.rows; programSheetRows=pr.rows;
   buildProgramIndex();
   populatePilotSelect();
+  populateProgramSelect();
   render();
 }
 
@@ -1003,7 +1018,7 @@ async function initGrist() {
 
     grist.onRecords(async records=>{
       if(records&&Array.isArray(records)&&records.length){
-        allActions=records; populatePilotSelect(); render();
+        allActions=records; populatePilotSelect(); populateProgramSelect(); render();
       } else {
         await loadAll();
       }
@@ -1038,7 +1053,7 @@ function loadDemo() {
     {id:13,Libelle:'Documentation',        Niveau:'2 - Tâche',  Initiative_ID:3, Action_Parent:10,Statut:'À faire',  PDCA:5,  Date_Demarrage:d(10), Date_Fin:d(25),  Pilote_Nom:'Claire Bernard',Priorite:'Basse'},
   ];
   document.body.insertAdjacentHTML('beforeend','<div class="demo-badge">DÉMO</div>');
-  populatePilotSelect(); render();
+  populatePilotSelect(); populateProgramSelect(); render();
 }
 
 /* ══════════════════════════════════════════
