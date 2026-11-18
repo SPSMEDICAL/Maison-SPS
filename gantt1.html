@@ -365,6 +365,13 @@ body { background:#ffffff; display:flex; flex-direction:column; }
   transition: background .1s;
 }
 .task-left-row:hover { background: rgba(79,124,255,.05); }
+/* Reorganisation verticale de l'affichage (aucun impact sur les dates). */
+.gantt-order-handle {cursor:grab;color:#64748b;flex-shrink:0;font-size:15px;line-height:1;padding:5px 3px;border-radius:4px;user-select:none;touch-action:none;}
+.gantt-order-handle:hover {background:#dbeafe;color:#2563eb;}
+.gantt-order-handle:active {cursor:grabbing;}
+.task-left-row.gantt-dragging {opacity:.45;}
+.task-left-row.gantt-drop-before {box-shadow:inset 0 3px #2563eb;background:#eff6ff;}
+.task-left-row.gantt-drop-after {box-shadow:inset 0 -3px #2563eb;background:#eff6ff;}
 .task-left-row.selected { background: rgba(79,124,255,.10); }
 
 .task-status-dot {
@@ -1052,6 +1059,19 @@ function actionSort(a, b) {
   return as - bs || String(a.Libelle || '').localeCompare(String(b.Libelle || ''), 'fr');
 }
 
+// Ordre d'affichage manuel, propre a chaque liste de freres.
+// Sans ordre renseigne, conserver le tri historique par dates.
+function sortGanttSiblings(items) {
+  const base = [...(items || [])].sort(actionSort);
+  const anyOrdered = base.some(item => Number.isFinite(Number(item.Ordre_Gantt)) && item.Ordre_Gantt !== null && item.Ordre_Gantt !== '');
+  if (!anyOrdered) return base;
+  return base.sort((a,b) => {
+    const av = a.Ordre_Gantt == null || a.Ordre_Gantt === '' ? Infinity : Number(a.Ordre_Gantt);
+    const bv = b.Ordre_Gantt == null || b.Ordre_Gantt === '' ? Infinity : Number(b.Ordre_Gantt);
+    return (Number.isFinite(av) ? av : Infinity) - (Number.isFinite(bv) ? bv : Infinity) || actionSort(a,b);
+  });
+}
+
 function setDefaultCollapsed(key) {
   if (!Object.prototype.hasOwnProperty.call(collapsed, key)) collapsed[key] = true;
 }
@@ -1219,10 +1239,10 @@ function buildProgramStructure(rawActions) {
     projectsByProgram[prog.id] = projs;
     const flat = [];
     projs.forEach(project => {
-      tasksByProject[project.id] = (tasksByProject[project.id] || []).sort(actionSort);
+      tasksByProject[project.id] = sortGanttSiblings(tasksByProject[project.id] || []);
       tasksByProject[project.id].forEach(task => {
         if (!task._virtualTask) flat.push(task);
-        subsByTask[task.id] = (subsByTask[task.id] || []).sort(actionSort);
+        subsByTask[task.id] = sortGanttSiblings(subsByTask[task.id] || []);
         subsByTask[task.id].forEach(sub => flat.push(sub));
       });
     });
@@ -1735,6 +1755,92 @@ function renderHeader() {
 /* ════════════════════════════════════════════
    RENDER ROWS (LEFT + GRID)
 ════════════════════════════════════════════ */
+/* ════════════════════════════════════════════
+   REORDONNANCEMENT VERTICAL (PAR PARENT)
+════════════════════════════════════════════ */
+let ganttOrderDrag = null;
+let ganttOrderSaving = false;
+
+function clearGanttDropIndicators() {
+  document.querySelectorAll('.gantt-drop-before,.gantt-drop-after,.gantt-dragging').forEach(el => {
+    el.classList.remove('gantt-drop-before','gantt-drop-after','gantt-dragging');
+  });
+}
+
+function reorderGanttRows(containerKind, parentId, sourceId, targetId, insertAfter) {
+  if (ganttOrderSaving || !gristReady) {
+    if (!gristReady) setSavePill('error','Grist non disponible');
+    return;
+  }
+  const map = containerKind === 'subtask' ? subsByTask : tasksByProject;
+  const siblings = map[parentId];
+  if (!siblings || String(sourceId) === String(targetId)) return;
+  // Aucune sous-tache ne doit pouvoir traverser son parent.
+  const ordered = siblings.filter(item => !item._virtualTask);
+  const src = ordered.findIndex(item => String(item.id) === String(sourceId));
+  if (src < 0) return;
+  const [moving] = ordered.splice(src,1);
+  let dest = ordered.findIndex(item => String(item.id) === String(targetId));
+  if (dest < 0) return;
+  if (insertAfter) dest++;
+  ordered.splice(dest,0,moving);
+  const oldList = siblings.slice();
+  const changes = ordered.map((item,i) => ['UpdateRecord',currentActionsTable(),item.id,{Ordre_Gantt:(i+1)*10}]);
+  const oldValues = ordered.map(item => [item,item.Ordre_Gantt]);
+  // Sauvegarder aussi les positions des elements non directement deplaces :
+  // cela assure un ordre stable au prochain chargement depuis Grist.
+  ordered.forEach((item,i) => { item.Ordre_Gantt=(i+1)*10; });
+  const virtuals = siblings.filter(item => item._virtualTask);
+  map[parentId] = [...ordered,...virtuals];
+  ganttOrderSaving = true;
+  render();
+  setSavePill('saving','Enregistrement de l’ordre');
+  grist.docApi.applyUserActions(changes).then(async () => {
+    suppressNextRecordRefresh = true;
+    await refreshFromGrist();
+    setSavePill('saved','Ordre enregistré');
+    setTimeout(() => setSavePill(''),2500);
+  }).catch(err => {
+    oldValues.forEach(([item,value]) => {item.Ordre_Gantt=value;});
+    map[parentId]=oldList;
+    render();
+    setSavePill('error','Erreur ordre : '+(err?.message||'inconnue'));
+  }).finally(() => {ganttOrderSaving=false;});
+}
+
+function setupGanttOrderRow(row, kind, parentId, itemId) {
+  const handle=row.querySelector('.gantt-order-handle');
+  if (!handle || parentId == null) return;
+  const group=kind+':'+String(parentId);
+  // Seule la poignee est draggable : cliquer sur le reste ouvre la fiche.
+  handle.addEventListener('click',e => e.stopPropagation());
+  handle.addEventListener('dragstart',e => {
+    if (ganttOrderSaving) {e.preventDefault();return;}
+    ganttOrderDrag={group,kind,parentId,itemId};
+    e.dataTransfer.effectAllowed='move';
+    e.dataTransfer.setData('text/plain',String(itemId));
+    row.classList.add('gantt-dragging');
+    e.stopPropagation();
+  });
+  handle.addEventListener('dragend',() => {ganttOrderDrag=null;clearGanttDropIndicators();});
+  row.addEventListener('dragover',e => {
+    if (!ganttOrderDrag || ganttOrderDrag.group!==group || String(ganttOrderDrag.itemId)===String(itemId)) return;
+    e.preventDefault();e.stopPropagation();
+    e.dataTransfer.dropEffect='move';
+    clearGanttDropIndicators();
+    row.classList.add(e.clientY-row.getBoundingClientRect().top>row.offsetHeight/2?'gantt-drop-after':'gantt-drop-before');
+  });
+  row.addEventListener('drop',e => {
+    if (!ganttOrderDrag || ganttOrderDrag.group!==group || String(ganttOrderDrag.itemId)===String(itemId)) return;
+    e.preventDefault();e.stopPropagation();
+    const after=e.clientY-row.getBoundingClientRect().top>row.offsetHeight/2;
+    const drag=ganttOrderDrag;
+    ganttOrderDrag=null;
+    clearGanttDropIndicators();
+    reorderGanttRows(drag.kind,drag.parentId,drag.itemId,itemId,after);
+  });
+}
+
 function render() {
   renderHeader();
   const leftEl  = document.getElementById('ganttLeft');
@@ -1899,6 +2005,7 @@ function render() {
           tLeft.className = 'task-left-row level-task'+(selectedId===task.id?' selected':'');
           tLeft.innerHTML = `
             ${hasSubs ? `<span class="collapse-btn ${taskOpen?'open':''}">▶</span>` : '<span style="width:16px;flex-shrink:0"></span>'}
+            <span class="gantt-order-handle" draggable="true" title="Glisser pour changer l’ordre dans ce projet">⠿</span>
             <span class="task-status-dot" style="background:${taskColor}"></span>
             <span class="task-left-name">✅ ${esc(tName)}</span>
             <span class="task-left-dates">${tStart?fmtSh(tStart):''}</span>
@@ -1906,6 +2013,7 @@ function render() {
           const taskCollapse = tLeft.querySelector('.collapse-btn');
           if (taskCollapse) taskCollapse.onclick = (event) => toggleCollapse(task.id, event);
           tLeft.onclick = () => { panelMode='view'; selectedId=task.id; render(); };
+          setupGanttOrderRow(tLeft,'task',project.id,task.id);
           leftEl.appendChild(tLeft);
 
           const tGrid = buildGridRow(days, cw, false);
@@ -1923,11 +2031,13 @@ function render() {
           const sLeft = document.createElement('div');
           sLeft.className = 'task-left-row level-subtask'+(selectedId===sub.id?' selected':'');
           sLeft.innerHTML = `
+            <span class="gantt-order-handle" draggable="true" title="Glisser pour changer l’ordre dans cette tâche">⠿</span>
             <span class="task-status-dot" style="background:${subColor}"></span>
             <span class="task-left-name">🔹 ${esc(sName)}</span>
             <span class="task-left-dates">${sStart?fmtSh(sStart):''}</span>
           `;
           sLeft.onclick = () => { panelMode='view'; selectedId=sub.id; render(); };
+          setupGanttOrderRow(sLeft,'subtask',task.id,sub.id);
           leftEl.appendChild(sLeft);
 
           const sGrid = buildGridRow(days, cw, false);
