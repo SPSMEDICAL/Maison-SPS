@@ -2434,7 +2434,7 @@ function renderSidePanel() {
     const defaultInitiative = selectedProg ? (directInitiativeIdOf(selectedProg) || linkedProgramIdForAction(selectedProg)) : (selectedTask ? (directInitiativeIdOf(selectedTask) || linkedProgramIdForAction(selectedTask)) : (defaultParent ? (directInitiativeIdOf(defaultParentObj) || linkedProgramIdForAction(defaultParentObj)) : ''));
 
     const createItem = {
-      Libelle:'', Statut:'A faire', PDCA:0, Description:'', Pilote:null, Initiative_ID: defaultInitiative || '',
+      Libelle:'', Statut:'A faire', Priorite:'Moyenne', PDCA:0, Description:'', Pilote:null, Initiative_ID: defaultInitiative || '',
       Tache_precedente: selectedTask?.id || null, Date_Demarrage:'', Date_Fin:'', Action_Parent: defaultParent, Niveau:'2 - Tâche'
     };
     body.innerHTML = formHtml(createItem, 'create');
@@ -2532,6 +2532,12 @@ function formHtml(item, mode) {
         <label class="form-label">Avancement %</label>
         <input class="form-input" id="panelPDCA" type="number" min="0" max="100" value="${item.PDCA ?? 0}" />
       </div>
+    </div>
+    <div class="form-row">
+      <label class="form-label" for="panelPriorite">Priorité</label>
+      <select class="form-select" id="panelPriorite">
+        ${['Critique','Haute','Moyenne','Basse'].map(v => `<option value="${v}" ${String(item.Priorite || '').trim().toLowerCase() === v.toLowerCase() || (!String(item.Priorite || '').trim() && v === 'Moyenne') ? 'selected' : ''}>${v}</option>`).join('')}
+      </select>
     </div>
     <div class="form-grid-2">
       <div class="form-row">
@@ -2643,6 +2649,7 @@ async function saveSelectedFromPanel(id, mode) {
   if (!obj) return;
   obj.Libelle = document.getElementById('panelLibelle').value.trim();
   obj.Statut = document.getElementById('panelStatut').value;
+  obj.Priorite = document.getElementById('panelPriorite').value;
   obj.PDCA = Number(document.getElementById('panelPDCA').value || 0);
   obj.Date_Demarrage = fromInputDate(document.getElementById('panelDateStart').value);
   obj.Date_Fin = fromInputDate(document.getElementById('panelDateEnd').value);
@@ -2690,6 +2697,7 @@ async function createTaskFromPanel() {
     Libelle:         document.getElementById('panelLibelle').value.trim() || 'Nouvelle tâche',
     Niveau:          selectedNiveau,
     Statut:          document.getElementById('panelStatut').value || 'A faire',
+    Priorite:        document.getElementById('panelPriorite').value || 'Moyenne',
     PDCA:            Number(document.getElementById('panelPDCA').value || 0),
     Description:     document.getElementById('panelDescription').value || '',
   };
@@ -2730,6 +2738,7 @@ async function saveFullRecord(obj) {
   const fields = {
     Libelle: obj.Libelle || '',
     Statut: obj.Statut || '',
+    Priorite: obj.Priorite || 'Moyenne',
     PDCA: Number(obj.PDCA || 0),
     Date_Demarrage: obj.Date_Demarrage,
     Date_Fin: obj.Date_Fin,
